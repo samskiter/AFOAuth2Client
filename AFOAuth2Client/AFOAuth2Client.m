@@ -216,8 +216,6 @@ static NSMutableDictionary * AFKeychainQueryDictionaryWithIdentifier(NSString *i
             [credential setRefreshToken:refreshToken];
         }
 
-        [self setAuthorizationHeaderWithCredential:credential];
-
         if (success) {
             success(credential);
         }
