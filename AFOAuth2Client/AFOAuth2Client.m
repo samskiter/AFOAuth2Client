@@ -84,6 +84,7 @@ static NSError * AFOAuth2ErrorFromResponseObject(NSDictionary *responseObject) {
 @property (readwrite, nonatomic) NSString *serviceProviderIdentifier;
 @property (readwrite, nonatomic) NSString *clientID;
 @property (readwrite, nonatomic) NSString *secret;
+@property (readonly, nonatomic)  BOOL basicAuth;
 @end
 
 @implementation AFOAuth2Client
@@ -95,9 +96,17 @@ static NSError * AFOAuth2ErrorFromResponseObject(NSDictionary *responseObject) {
     return [[self alloc] initWithBaseURL:url clientID:clientID secret:secret];
 }
 
+-(id)initWithBaseURL:(NSURL *)url
+            clientID:(NSString *)clientID
+              secret:(NSString *)secret
+{
+    return [self initWithBaseURL:url clientID:clientID secret:secret withBasicAuth:YES];
+}
+
 - (id)initWithBaseURL:(NSURL *)url
              clientID:(NSString *)clientID
                secret:(NSString *)secret
+        withBasicAuth:(BOOL)basicAuth
 {
     NSParameterAssert(clientID);
 
@@ -109,6 +118,11 @@ static NSError * AFOAuth2ErrorFromResponseObject(NSDictionary *responseObject) {
     self.serviceProviderIdentifier = [self.baseURL host];
     self.clientID = clientID;
     self.secret = secret;
+    _basicAuth = basicAuth;
+    if (self.basicAuth)
+    {
+        [self setAuthorizationHeaderWithUsername:clientID password:secret];
+    }
 
     [self registerHTTPOperationClass:[AFJSONRequestOperation class]];
 
@@ -201,20 +215,22 @@ static NSError * AFOAuth2ErrorFromResponseObject(NSDictionary *responseObject) {
                                failure:(void (^)(NSError *error))failure
 {
     NSMutableDictionary *mutableParameters = [NSMutableDictionary dictionaryWithDictionary:parameters];
-    [mutableParameters setObject:self.clientID forKey:@"client_id"];
-    [mutableParameters setValue:self.secret forKey:@"client_secret"];
+    if (!self.basicAuth)
+    {
+        [mutableParameters setObject:self.clientID forKey:@"client_id"];
+        [mutableParameters setValue:self.secret forKey:@"client_secret"];
+    }
     parameters = [NSDictionary dictionaryWithDictionary:mutableParameters];
 
     NSMutableURLRequest *mutableRequest = [self requestWithMethod:@"POST" path:path parameters:parameters];
     [mutableRequest setValue:@"application/json" forHTTPHeaderField:@"Accept"];
 
     AFHTTPRequestOperation *requestOperation = [self HTTPRequestOperationWithRequest:mutableRequest success:^(AFHTTPRequestOperation *operation, id responseObject) {
-        if ([responseObject valueForKey:@"error"]) {
+        if (responseObject == nil || [responseObject valueForKey:@"error"]) {
             if (failure) {
                 NSError *error = AFOAuth2ErrorFromResponseObject(responseObject);
                 failure(error);
             }
-
             return;
         }
 
@@ -223,22 +239,27 @@ static NSError * AFOAuth2ErrorFromResponseObject(NSDictionary *responseObject) {
             refreshToken = [parameters valueForKey:@"refresh_token"];
         }
 
-        AFOAuthCredential *credential = [AFOAuthCredential credentialWithOAuthToken:[responseObject valueForKey:@"access_token"] tokenType:[responseObject valueForKey:@"token_type"]];
-
         NSDate *expireDate = nil;
         id expiresIn = [responseObject valueForKey:@"expires_in"];
         if (expiresIn != nil && ![expiresIn isEqual:[NSNull null]]) {
             expireDate = [NSDate dateWithTimeIntervalSinceNow:[expiresIn doubleValue]];
         }
+        
+        AFOAuthCredential *credential = [AFOAuthCredential credentialWithOAuthToken:[responseObject valueForKey:@"access_token"] tokenType:[responseObject valueForKey:@"token_type"] expiration:expireDate];
 
-        [credential setRefreshToken:refreshToken expiration:expireDate];
-
-        [self setAuthorizationHeaderWithCredential:credential];
+        if (refreshToken)
+        {
+            [credential setRefreshToken:refreshToken];
+        }
 
         if (success) {
             success(credential);
         }
     } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
+        if (self.basicAuth)
+        {
+            [self setAuthorizationHeaderWithUsername:self.clientID password:self.secret];
+        }
         if (failure) {
             failure(error);
         }
@@ -269,35 +290,31 @@ static NSError * AFOAuth2ErrorFromResponseObject(NSDictionary *responseObject) {
 
 + (instancetype)credentialWithOAuthToken:(NSString *)token
                                tokenType:(NSString *)type
+                              expiration:(NSDate *)expiration
 {
-    return [[self alloc] initWithOAuthToken:token tokenType:type];
+    return [[self alloc] initWithOAuthToken:token tokenType:type expiration:expiration];
 }
 
 - (id)initWithOAuthToken:(NSString *)token
                tokenType:(NSString *)type
+              expiration:(NSDate *)expiration
 {
     self = [super init];
     if (!self) {
         return nil;
     }
 
+    NSParameterAssert(expiration);
+    
     self.accessToken = token;
     self.tokenType = type;
+    self.expiration = expiration;
 
     return self;
 }
 
 - (NSString *)description {
     return [NSString stringWithFormat:@"<%@ accessToken:\"%@\" tokenType:\"%@\" refreshToken:\"%@\" expiration:\"%@\">", [self class], self.accessToken, self.tokenType, self.refreshToken, self.expiration];
-}
-
-- (void)setRefreshToken:(NSString *)refreshToken
-             expiration:(NSDate *)expiration
-{
-    NSParameterAssert(expiration);
-
-    self.refreshToken = refreshToken;
-    self.expiration = expiration;
 }
 
 - (BOOL)isExpired {
@@ -308,7 +325,7 @@ static NSError * AFOAuth2ErrorFromResponseObject(NSDictionary *responseObject) {
 
 #ifdef _SECURITY_SECITEM_H_
 
-+ (BOOL)storeCredential:(AFOAuth1Token *)credential
++ (BOOL)storeCredential:(AFOAuthCredential *)credential
          withIdentifier:(NSString *)identifier
 {
     id securityAccessibility = nil;

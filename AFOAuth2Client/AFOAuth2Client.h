@@ -69,7 +69,7 @@
                            secret:(NSString *)secret;
 
 /**
- Initializes an `AFOAuth2Client` object with the specified base URL, client identifier, and secret.
+ Initializes an `AFOAuth2Client` object with the specified base URL, client identifier, and secret. The communication to to the server will use HTTP basic auth by default (use `-(id)initWithBaseURL:clientID:secret:withBasicAuth:` to change this).
 
  @param url The base URL for the HTTP client. This argument must not be `nil`.
  @param clientID The client identifier issued by the authorization server, uniquely representing the registration information provided by the client.
@@ -80,6 +80,21 @@
 - (id)initWithBaseURL:(NSURL *)url
              clientID:(NSString *)clientID
                secret:(NSString *)secret;
+
+/**
+ Initializes an `AFOAuth2Client` object with the specified base URL, client identifier, and secret.
+ 
+ @param url The base URL for the HTTP client. This argument must not be `nil`.
+ @param clientID The client identifier issued by the authorization server, uniquely representing the registration information provided by the client.
+ @param secret The client secret.
+ @param whether to use HTTP basic auth when communicating with the server. It is recommended to use basic auth.
+ 
+ @return The newly-initialized OAuth 2 client
+ */
+- (id)initWithBaseURL:(NSURL *)url
+             clientID:(NSString *)clientID
+               secret:(NSString *)secret
+        withBasicAuth:(BOOL)basicAuth;
 
 /**
  Sets the "Authorization" HTTP header set in request objects made by the HTTP client to a basic authentication value with Base64-encoded username and password. This overwrites any existing value for this header.
@@ -203,35 +218,37 @@
 ///--------------------------------------------
 
 /**
- Create an OAuth credential from a token string, with a specified type.
+ Create an OAuth credential from a token string, with a specified type and specified expiration.
  
  @param token The OAuth token string.
  @param type The OAuth token type.
+ @param expiration The expiration of the access token. This must not be 'nil'.
  */
 + (instancetype)credentialWithOAuthToken:(NSString *)token
-                               tokenType:(NSString *)type;
+                               tokenType:(NSString *)type
+                              expiration:(NSDate *)expiration;
 
 /**
- Initialize an OAuth credential from a token string, with a specified type.
+ Initialize an OAuth credential from a token string, with a specified type and specified expiration.
 
  @param token The OAuth token string.
  @param type The OAuth token type.
+ @param expiration The expiration of the access token. This must not be 'nil'.
  */
 - (id)initWithOAuthToken:(NSString *)token
-               tokenType:(NSString *)type;
+               tokenType:(NSString *)type
+              expiration:(NSDate *)expiration;
 
 ///----------------------------
 /// @name Setting Refresh Token
 ///----------------------------
 
 /**
- Set the credential refresh token, with a specified expiration. 
+ Set the credential refresh token.
  
  @param refreshToken The OAuth refresh token.
- @param expiration The expiration of the access token. This must not be `nil`.
  */
-- (void)setRefreshToken:(NSString *)refreshToken
-             expiration:(NSDate *)expiration;
+- (void)setRefreshToken:(NSString *)refreshToken;
 
 ///-----------------------------------------
 /// @name Storing and Retrieving Credentials
